@@ -33,6 +33,7 @@ def readDate(fname):
             line = f.read()
             assert (len(line) > 0)
             return datetime.strptime(line, ISOfmt)
+            f.close()
     else:
         print("No file to read last run date from. Please retry and specify a last run date in ISO 8601 format.")
         sys.exit(1)
