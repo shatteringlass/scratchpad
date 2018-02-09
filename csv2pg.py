@@ -73,7 +73,8 @@ def readCSV(f):
                 if type_list[i] == 'varchar' or row[i] == 'NA':
                     pass
                 else:
-                    type_list[i] = dataType(row[i], type_list[i])
+                    newtype = dataType(row[i], type_list[i])
+                    type_list[i] = newtype
                 if len(row[i]) > longest[i]:
                     longest[i] = len(row[i])
 
@@ -90,13 +91,13 @@ def dataType(val, current_type):
     except SyntaxError:
         return 'varchar'
     if type(t) in [int, float]:
-        if type(t) is float and current_type not in ['varchar']:
+        if (type(t) is float) and (current_type is not 'varchar'):
             return 'float'
-        if (type(t) in [int]) and current_type not in ['float', 'varchar']:
+        if (type(t) is int) and (current_type not in ['float', 'varchar']):
             # Use smallest possible int type
-            if (-32768 < t < 32767) and current_type not in ['integer', 'bigint']:
+            if (-32768 < t < 32767) and (current_type not in ['integer', 'bigint', 'float']):
                 return 'smallint'
-            elif (-2147483648 < t < 2147483647) and current_type not in ['bigint']:
+            elif (-2147483648 < t < 2147483647) and (current_type not in ['bigint']):
                 return 'integer'
             else:
                 return 'bigint'
@@ -118,6 +119,7 @@ def createTable(file, conn, tbl):
     statement = statement[:-1] + ');'
 
     if conn is None:
+        print("No connection available. Please retry.")
         sys.exit(1)
 
     cur = conn.cursor()
