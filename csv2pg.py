@@ -39,7 +39,7 @@ def main():
     print("Tabella creata, ora inizio ingestion.")
     # Posso continuare con ingestion nella tabella appena creata
     f.seek(0)
-    #loadCSV(conn, f, tbl, separator)
+    loadCSV(conn, f, tbl, separator)
     print("ingestion completata")
     conn.close()
     f.close()
@@ -59,22 +59,28 @@ def readCSV(f):
     longest, headers, type_list = [], [], []
     minlen = 10
 
+    # Itero sulle righe del CSV
     for row in reader:
+        # Sono alla prima riga -> instestazioni
         if len(headers) == 0:
             headers = row
+            # Inizializzo tipi dati e lunghezze per tutte le colonne
             for _ in row:
                 # Setting the min field length
                 longest.append(minlen)
                 type_list.append('')
+        # Analizzo i record
         else:
-            # After headers, I iterate on columns
+            # Per ogni colonna
             for i in range(len(row)):
-                # NA is the csv null value
+                # Se ho già individuato un varchar o un valore nullo, salto
                 if type_list[i] == 'varchar' or row[i] == 'NA':
                     pass
+                # Altrimenti...
                 else:
-                    newtype = dataType(row[i], type_list[i])
-                    type_list[i] = newtype
+                    # calcolo il tipo del valore corrente tenendo in conto dell'ipotesi precedente
+                    type_list[i] = dataType(row[i], type_list[i])
+                # Infine aggiorno la lunghezza richiesta per la colonna
                 if len(row[i]) > longest[i]:
                     longest[i] = len(row[i])
 
@@ -90,17 +96,22 @@ def dataType(val, current_type):
         return 'varchar'
     except SyntaxError:
         return 'varchar'
+    # Se il tipo è numerico...
     if type(t) in [int, float]:
-        if (type(t) is float) and (current_type is not 'varchar'):
-            return 'float'
-        if (type(t) is int) and (current_type not in ['float', 'varchar']):
+        # ... e decimale, allora 6 decimal digits precision
+        if type(t) is float:
+            return 'real'
+        # ...e intero, mentre l'ipotesi precedente non è decimale
+        if (type(t) is int) and (current_type is not 'real'):
             # Use smallest possible int type
-            if (-32768 < t < 32767) and (current_type not in ['integer', 'bigint', 'float']):
+            if (-32768 < t < 32767) and (current_type not in ['integer', 'bigint', 'real']):
                 return 'smallint'
             elif (-2147483648 < t < 2147483647) and (current_type not in ['bigint']):
                 return 'integer'
             else:
                 return 'bigint'
+        else:
+            return current_type
     else:
         return 'varchar'
 
