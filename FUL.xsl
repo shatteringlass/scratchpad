@@ -81,11 +81,19 @@
         <xsl:value-of select="$quote"/>
         <xsl:value-of select="$separator"/>
         <xsl:value-of select="$quote"/>
-        <xsl:text>TRMNTN_DT</xsl:text>
+      <xsl:text>TRMNTN_DT</xsl:text>
+        <xsl:value-of select="$quote"/>
+        <xsl:value-of select="$separator"/>
+        <xsl:value-of select="$quote"/>
+        <xsl:text>BASEPRDCT</xsl:text>
         <xsl:value-of select="$quote"/>
         <xsl:value-of select="$separator"/>
         <xsl:value-of select="$quote"/>
         <xsl:text>SBPRDCT</xsl:text>
+        <xsl:value-of select="$quote"/>
+        <xsl:value-of select="$separator"/>
+        <xsl:value-of select="$quote"/>
+        <xsl:text>FRTHRSBPRDCT</xsl:text>
         <xsl:value-of select="$quote"/>
         <xsl:value-of select="$separator"/>
         <xsl:value-of select="$quote"/>
@@ -108,7 +116,7 @@
             <xsl:value-of select="$quote"/>
             <xsl:value-of select="$separator"/>
             <xsl:value-of select="$quote"/>
-            <xsl:value-of select=".//dd:FullNm"/>
+            <xsl:value-of select="translate(.//dd:FullNm, '\&quot;', '')"/>
             <xsl:value-of select="$quote"/>
             <xsl:value-of select="$separator"/>
             <xsl:value-of select="$quote"/>
@@ -128,7 +136,7 @@
             <xsl:value-of select="$quote"/>
             <xsl:value-of select="$separator"/>
             <xsl:value-of select="$quote"/>
-            <xsl:value-of select=".//dd:ShrtNm"/>
+            <xsl:value-of select="translate(.//dd:ShrtNm, '\&quot;', '')"/>
             <xsl:value-of select="$quote"/>
             <xsl:value-of select="$separator"/>
             <xsl:value-of select="$quote"/>
@@ -175,11 +183,19 @@
             <xsl:value-of select="$quote"/>
             <xsl:value-of select="$separator"/>
             <xsl:value-of select="$quote"/>
-            <xsl:value-of select=".//dd:TermntnDt"/>
+                        <xsl:value-of select=".//dd:TermntnDt"/>
+            <xsl:value-of select="$quote"/>
+            <xsl:value-of select="$separator"/>
+            <xsl:value-of select="$quote"/>
+            <xsl:value-of select=".//dd:BasePdct"/>
             <xsl:value-of select="$quote"/>
             <xsl:value-of select="$separator"/>
             <xsl:value-of select="$quote"/>
             <xsl:value-of select=".//dd:SubPdct"/>
+            <xsl:value-of select="$quote"/>
+            <xsl:value-of select="$separator"/>
+            <xsl:value-of select="$quote"/>
+            <xsl:value-of select=".//dd:AddtlSubPdct"/>
             <xsl:value-of select="$quote"/>
             <xsl:value-of select="$separator"/>
             <xsl:value-of select="$quote"/>

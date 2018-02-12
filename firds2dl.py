@@ -74,6 +74,9 @@ def getList(lastRun, startRow, maxRows):
         print("Pagination needed.")
         return response['docs'].update(getList(lastRun, maxRows + 1, leftRows))
 
+def get_newest(list):
+    return max([datetime.strptime(x['publication_date'], ISOfmt) for x in list])
+
 
 def downloadLinks(list, destPath):
     FUL = [x for x in list if x['file_type'] == 'FULINS']
@@ -82,19 +85,23 @@ def downloadLinks(list, destPath):
         print("No items found.")
         sys.exit(1)
 
-    newestFUL = max([datetime.strptime(x['publication_date'], ISOfmt) for x in FUL])
+    newestFUL = get_newest(FUL)
     FUL_OPT = [x for x in FUL if hasOptions(x) and datetime.strptime(x['publication_date'], ISOfmt) == newestFUL]
     FUL_FUT = [x for x in FUL if hasFutures(x) and datetime.strptime(x['publication_date'], ISOfmt) == newestFUL]
     FUL_FWD = [x for x in FUL if hasForwards(x) and datetime.strptime(x['publication_date'], ISOfmt) == newestFUL]
     FUL_SWP = [x for x in FUL if hasForwards(x) and datetime.strptime(x['publication_date'], ISOfmt) == newestFUL]
 
     DLT = [x for x in list if x['file_type'] == 'DLTINS' and isNewerThan(x, newestFUL)]
+    newestDLT = get_newest(DLT)
+
     ls = [FUL_OPT, FUL_FUT, FUL_FWD, FUL_SWP, DLT]
 
     for list in ls:
         for file in list:
             link = file['download_link']
             downloadZip(link, destPath + getFilename(link))
+
+    return newestFUL, newestDLT
 
 
 def hasOptions(r):

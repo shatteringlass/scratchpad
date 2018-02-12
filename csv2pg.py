@@ -30,17 +30,16 @@ def main():
 
     conn = connectDb(dsn)
 
-    # Apro file CSV
     f = open(csvfile, 'r')
 
-    if not existsTable(conn, tbl):  # La tabella non esiste, la devo creare prima
-        createTable(f, conn, tbl)
+    if not existsTable(conn, tbl):
+        createTable(readCSV(f), conn, tbl)
 
     print("Tabella creata, ora inizio ingestion.")
-    # Posso continuare con ingestion nella tabella appena creata
     f.seek(0)
-    loadCSV(conn, f, tbl, separator)
-    print("ingestion completata")
+    loadCSV(conn, f, tbl, separator, trunc=False)
+    print("Ingestion completata.")
+
     conn.close()
     f.close()
 
@@ -57,69 +56,59 @@ def readCSV(f):
     reader = csv.reader(f, delimiter=';')
 
     longest, headers, type_list = [], [], []
+    bools = ['t', 'true', 'y', 'yes', 'on', '1', 'f', 'false', 'n', 'no', 'off', '0']
     minlen = 10
 
-    # Itero sulle righe del CSV
     for row in reader:
-        # Sono alla prima riga -> instestazioni
         if len(headers) == 0:
             headers = row
-            # Inizializzo tipi dati e lunghezze per tutte le colonne
             for _ in row:
-                # Setting the min field length
                 longest.append(minlen)
                 type_list.append('')
-        # Analizzo i record
         else:
-            # Per ogni colonna
             for i in range(len(row)):
-                # Se ho già individuato un varchar o un valore nullo, salto
-                if type_list[i] == 'varchar' or row[i] == 'NA':
+                if type_list[i] == 'text' or row[i] == 'NA':
                     pass
-                # Altrimenti...
                 else:
-                    # calcolo il tipo del valore corrente tenendo in conto dell'ipotesi precedente
-                    type_list[i] = dataType(row[i], type_list[i])
-                # Infine aggiorno la lunghezza richiesta per la colonna
+                    type_list[i] = dataType(row[i], type_list[i],bools)
                 if len(row[i]) > longest[i]:
                     longest[i] = len(row[i])
 
     return longest, headers, type_list
 
 
-def dataType(val, current_type):
+def dataType(val, current_type, bools):
     import ast
     try:
-        # Evaluates numbers to an appropriate type, and strings an error
         t = ast.literal_eval(val)
     except ValueError:
-        return 'varchar'
+        return 'text'
     except SyntaxError:
-        return 'varchar'
-    # Se il tipo è numerico...
+        return 'text'
     if type(t) in [int, float]:
-        # ... e decimale, allora 6 decimal digits precision
         if type(t) is float:
             return 'real'
-        # ...e intero, mentre l'ipotesi precedente non è decimale
         if (type(t) is int) and (current_type is not 'real'):
-            # Use smallest possible int type
             if (-32768 < t < 32767) and (current_type not in ['integer', 'bigint', 'real']):
                 return 'smallint'
             elif (-2147483648 < t < 2147483647) and (current_type not in ['bigint']):
                 return 'integer'
             else:
                 return 'bigint'
+        elif current_type is 'boolean':
+            return 'text'
         else:
             return current_type
     else:
-        return 'varchar'
+        if val in bools:
+            return 'boolean'
+        else:
+            return 'text'
 
 
-def createTable(file, conn, tbl):
+def createTable(longest, headers, type_list, conn, tbl):
+    import psycopg2
     statement = 'create table ' + tbl + ' ('
-
-    longest, headers, type_list = readCSV(file)
 
     for i in range(len(headers)):
         if type_list[i] == 'varchar':
@@ -151,13 +140,24 @@ def connectDb(dsn):
     return conn
 
 
-def loadCSV(conn, file_object, table_name, separator):
+def loadCSV(conn, file_object, table_name, separator, trunc):
+    import psycopg2
+
+    cursor = conn.cursor()
+
+    if trunc:
+        sql  = """
+        TRUNCATE """+table_name+""";
+        """
+        cursor.execute(sql)
+        print("Truncating table {}".format(table_name))
+        conn.commit()
+
     sql = """
         COPY %s FROM STDIN WITH CSV HEADER
         DELIMITER AS '""" + separator + """'
         """
 
-    cursor = conn.cursor()
     cursor.copy_expert(sql=sql % table_name, file=file_object)
     conn.commit()
     cursor.close()
