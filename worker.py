@@ -57,15 +57,15 @@ def main():
     print("Merging available DLTINS files.")
     merge_mult_csv(wdir + r'/DLTINS*.csv', m_dlt)
 
+    insert_hashes(m_ful, sep, list(range(0.22)))
+    insert_hashes(m_dlt, sep, list(range(1.22)))
+
     print("Ingesting FULINS data into pgSQL table.")
     ingest_db(hst, dbn, 'fulins', uid, pwd, m_ful, sep, True)
     print("Ingesting DLTINS data into pgSQL table.")
     ingest_db(hst, dbn, 'dltins', uid, pwd, m_dlt, sep, True)
 
     print("File ingested.")
-
-    # insertHashes(hst, dbn, 'fulins', uid, pwd, m_ful)
-    # insertHashes(hst, dbn, 'dltins', uid, pwd, m_ful)
 
     # Se l'utente lo ha richiesto, procedo a eliminare gli artefatti scaricati
     if len(args.cleanup) > 0:
@@ -110,6 +110,30 @@ def unzip_files(zip_path, dest_path):
 def to_csv(xml, xsl, csv):
     import xml2csv as x
     x.transform(xml, xsl, csv)
+
+
+def insert_hashes(file, sep, rng):
+    from tempfile import NamedTemporaryFile
+    import shutil
+    import csv
+    import hashlib
+
+    tempfile = NamedTemporaryFile(mode='w', delete=False)
+
+    with open(file, 'r') as csvfile, tempfile:
+        reader = csv.reader(csvfile, delimiter=sep)
+        writer = csv.writer(tempfile, delimiter=sep)
+        writer.writerow(next(reader) + ['hash'])
+
+        for row in reader:
+            subset = ''
+            for i in rng:
+                subset += "{}".format(row[i])
+            h = hashlib.md5(subset.encode('utf-8')).hexdigest()
+            row.append(h)
+            writer.writerow(row)
+
+    shutil.move(tempfile.name, file)
 
 
 def ingest_db(host, dbname, tbl, uid, pwd, csvfile, separator, trunc):
