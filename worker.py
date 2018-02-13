@@ -4,8 +4,10 @@ def main():
 
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--cutoff', type=str, help='')
+    parser.add_argument('--prd', type=str, nargs='*', default='S J F O',
+                        help='The CFI initial letter for each product category to be downloaded (C D E F H I J K L M O R S T). Only options, swaps, futures and forwards are downloaded by default.')
 
-    parser.add_argument('--cleanup', metavar='ext', type=str, nargs='*', help='', default='')
+    parser.add_argument('--cleanup', type=str, nargs='*', help='', default='')
     parser.add_argument('--sep', type=str, help='The CSV field separator. Semicolon by default.', default=';')
 
     requiredNamed = parser.add_argument_group('required named arguments')
@@ -22,58 +24,67 @@ def main():
     args = parser.parse_args()
 
     wdir = os.path.expanduser(args.wdir + '/')
-    path = os.path.dirname(os.path.realpath(__file__))
+    pth = os.path.dirname(os.path.realpath(__file__))
     cutoff = args.cutoff
+    prd = args.prd.split(" ")
     hst = args.hst
     dbn = args.dbn
     uid = args.uid
     pwd = args.pwd
     sep = args.sep
 
-    print("Fetching the available file list...")
-    n = list(map(lambda x: x.strftime("%Y%m%d"), download_files(cutoff, wdir)))
-    print("List fetched. Now going to download the most recent files...")
+    print("Fetching the available files from FIRDS web service...")
+    n = list(map(lambda x: x.strftime("%Y%m%d"), download_files(cutoff, prd, wdir)))
+    print("Most recent files downloaded. Now proceeding...")
 
     for file in os.listdir(wdir):
         dlt = isDLT(file)
         ful = isFUL(file)
-        first_dlt = dlt and first_dlt != dlt
         if file.endswith('.zip') and (dlt or ful):
             print(r"--> Unzipping and flattening file {}...".format(str(file)))
-            unzip_files(file, os.path.dirname(file))
+            z = os.path.join(wdir, file)
+            unzip_files(z, os.path.dirname(z))
 
-            no_ext = file[:-3]
+            no_ext = z[:-3]
             xml = "{}{}".format(no_ext, 'xml')
-            xsl = path + '/FUL.xsl' if ful else path + '/DLT.xsl'
+            xsl = pth + '/FUL.xsl' if ful else pth + '/DLT.xsl'
             csv = "{}{}".format(no_ext, 'csv')
 
             to_csv(xml, xsl, csv)
+            print(r'--> CSV correctly generated for file {}'.format(file))
 
     m_ful = wdir + r'/merge_FULINS_' + n[0] + '.csv'
     m_dlt = wdir + r'/merge_DLTINS_' + n[1] + '.csv'
 
     print("Merging available FULINS files.")
     merge_mult_csv(wdir + r'/FULINS*.csv', m_ful)
+    print(r"--> Merging FULINS files succeeded.")
+
     print("Merging available DLTINS files.")
     merge_mult_csv(wdir + r'/DLTINS*.csv', m_dlt)
+    print(r"--> Merging DLTINS files succeeded.")
 
-    insert_hashes(m_ful, sep, list(range(0.22)))
-    insert_hashes(m_dlt, sep, list(range(1.22)))
+    print("Hashing table rows...")
+    # Faccio l'hash delle righe utilizzando la 2-upla <ID,Venue>
+    insert_hashes(m_ful, prd, sep, [0, 5])
+    insert_hashes(m_dlt, prd, sep, [1, 6])
+    print(r"--> Hashing completed.")
 
+    # Se la tabella esiste, tronco e inserisco dati, altrimenti la creo
     print("Ingesting FULINS data into pgSQL table.")
-    ingest_db(hst, dbn, 'fulins', uid, pwd, m_ful, sep, True)
+    ingest_db(hst, dbn, 'fulins', uid, pwd, m_ful, sep)
+    print(r"--> FULINS files ingestion successful.")
+
     print("Ingesting DLTINS data into pgSQL table.")
-    ingest_db(hst, dbn, 'dltins', uid, pwd, m_dlt, sep, True)
+    ingest_db(hst, dbn, 'dltins', uid, pwd, m_dlt, sep)
+    print(r"--> DLTINS files ingestion successful.")
 
-    print("File ingested.")
-
-    # Se l'utente lo ha richiesto, procedo a eliminare gli artefatti scaricati
     if len(args.cleanup) > 0:
         print("Now removing leftover files.")
         cleanup(wdir, args.cleanup)
 
 
-def download_files(cutoff, dest_path):
+def download_files(cutoff, prods, dest_path):
     import firds2dl as f
 
     # Bypass the last run date if another ISO8601 timestamp is provided as argument
@@ -85,13 +96,13 @@ def download_files(cutoff, dest_path):
         last_run = f.readDate(fname)  # Lancia errore se non esiste questo file
 
     list = f.getList(last_run, 0, 500)
-    return f.downloadLinks(list, dest_path)
+    return f.downloadLinks(list, prods, dest_path)
 
 
-def merge_mult_csv(path, out):
+def merge_mult_csv(pth, out):
     import shutil
     import glob
-    allFiles = glob.glob(path)
+    allFiles = glob.glob(pth)
     with open(out, 'wb') as outfile:
         for i, fname in enumerate(allFiles):
             with open(fname, 'rb') as infile:
@@ -112,7 +123,7 @@ def to_csv(xml, xsl, csv):
     x.transform(xml, xsl, csv)
 
 
-def insert_hashes(file, sep, rng):
+def insert_hashes(file, prd, sep, rng):
     from tempfile import NamedTemporaryFile
     import shutil
     import csv
@@ -123,9 +134,13 @@ def insert_hashes(file, sep, rng):
     with open(file, 'r') as csvfile, tempfile:
         reader = csv.reader(csvfile, delimiter=sep)
         writer = csv.writer(tempfile, delimiter=sep)
-        writer.writerow(next(reader) + ['hash'])
+        header = next(reader)
+        nc = header.index('NSTRMNT_CLSSFCTN')
+        writer.writerow(header + ['hash'])
 
         for row in reader:
+            if row[nc][0] not in prd:
+                continue
             subset = ''
             for i in rng:
                 subset += "{}".format(row[i])
@@ -136,20 +151,22 @@ def insert_hashes(file, sep, rng):
     shutil.move(tempfile.name, file)
 
 
-def ingest_db(host, dbname, tbl, uid, pwd, csvfile, separator, trunc):
+def ingest_db(host, dbname, tbl, uid, pwd, csvfile, separator):
     import csv2pg as c
     dsn = "host = '{}' dbname = '{}' user = '{}' password = '{}'".format(host, dbname, uid, pwd)
 
     conn = c.connectDb(dsn)
     f = open(csvfile, 'r')
 
-    if not c.existsTable(conn, tbl):
+    has_table = c.existsTable(conn, tbl)
+
+    if not has_table:
         h = c.readCSV(f)
         c.createTable(*h, conn, tbl)
 
     print("Tabella creata, ora inizio ingestion.")
     f.seek(0)
-    c.loadCSV(conn, f, tbl, separator, trunc)
+    c.loadCSV(conn, f, tbl, separator, has_table)
     print("Ingestion completata.")
 
     conn.close()
@@ -160,6 +177,7 @@ def cleanup(dir, ext):
     import os
     # Remove files with specified extension
     for file in os.listdir(dir):
+        file = os.path.join(dir, file)
         for x in ext:
             if file.endswith('.' + str(x)):
                 os.remove(file)

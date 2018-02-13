@@ -100,14 +100,13 @@ def dataType(val, current_type, bools):
         else:
             return current_type
     else:
-        if val in bools:
+        if t in bools:
             return 'boolean'
         else:
             return 'text'
 
 
 def createTable(longest, headers, type_list, conn, tbl):
-    import psycopg2
     statement = 'create table ' + tbl + ' ('
 
     for i in range(len(headers)):

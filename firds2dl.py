@@ -14,6 +14,9 @@ def main():
     parser.add_argument('--cutoff', type=str,
                         help='Earliest data publication date to be searched, in ISO8601 format and Zulu time - i.e. YYYY-MM-DDTHH:MM:SSZ')
     parser.add_argument('--dest', type=str, default='./', help='Destination folder for downloaded data.')
+    parser.add_argument('--prods', type=str, nargs='*',
+                        help='The CFI initial letter for each product category to be downloaded (C D E F H I J K L M O R S T)',
+                        default='C D E F H I J K L M O R S T')
     args = parser.parse_args()
 
     # Bypass the last run date if another ISO8601 timestamp is provided as argument
@@ -24,7 +27,7 @@ def main():
         lastRun = readDate(fname)
 
     list = getList(lastRun, 0, 500)
-    downloadLinks(list, args.dest)
+    downloadLinks(list, args.prods, args.dest)
 
 
 def readDate(fname):
@@ -32,18 +35,18 @@ def readDate(fname):
         with open(fname, 'r') as f:
             line = f.read()
             assert (len(line) > 0)
-            return datetime.strptime(line, ISOfmt)
             f.close()
+            return datetime.strptime(line, ISOfmt)
     else:
         print("No file to read last run date from. Please retry and specify a last run date in ISO 8601 format.")
         sys.exit(1)
 
 
-def writeDate(fname):
+def writeDate(fname, date):
     if os.path.isfile(fname):
         with open(fname, 'r+') as f:
             f.seek(0)
-            f.write(endDate)
+            f.write(date)
             f.truncate()
             f.close()
     else:
@@ -74,27 +77,32 @@ def getList(lastRun, startRow, maxRows):
         print("Pagination needed.")
         return response['docs'].update(getList(lastRun, maxRows + 1, leftRows))
 
+
 def get_newest(list):
     return max([datetime.strptime(x['publication_date'], ISOfmt) for x in list])
 
 
-def downloadLinks(list, destPath):
+def downloadLinks(list, prods, destPath):
+    if len(prods) <= 0:
+        print("No products requested. Try again with more products.")
+        sys.exit(1)
+
     FUL = [x for x in list if x['file_type'] == 'FULINS']
 
     if len(FUL) <= 0:
-        print("No items found.")
+        print("None of the requested items is available.")
         sys.exit(1)
 
     newestFUL = get_newest(FUL)
-    FUL_OPT = [x for x in FUL if hasOptions(x) and datetime.strptime(x['publication_date'], ISOfmt) == newestFUL]
-    FUL_FUT = [x for x in FUL if hasFutures(x) and datetime.strptime(x['publication_date'], ISOfmt) == newestFUL]
-    FUL_FWD = [x for x in FUL if hasForwards(x) and datetime.strptime(x['publication_date'], ISOfmt) == newestFUL]
-    FUL_SWP = [x for x in FUL if hasForwards(x) and datetime.strptime(x['publication_date'], ISOfmt) == newestFUL]
+    ls = []
+
+    for prod in prods:
+        ls.append(
+            [x for x in FUL if hasProduct(x, prod) and datetime.strptime(x['publication_date'], ISOfmt) == newestFUL])
 
     DLT = [x for x in list if x['file_type'] == 'DLTINS' and isNewerThan(x, newestFUL)]
+    ls.append(DLT)
     newestDLT = get_newest(DLT)
-
-    ls = [FUL_OPT, FUL_FUT, FUL_FWD, FUL_SWP, DLT]
 
     for list in ls:
         for file in list:
@@ -104,20 +112,8 @@ def downloadLinks(list, destPath):
     return newestFUL, newestDLT
 
 
-def hasOptions(r):
-    return r['file_name'].find("_O_") != -1
-
-
-def hasSwaps(r):
-    return r['file_name'].find("_S_") != -1
-
-
-def hasFutures(r):
-    return r['file_name'].find("_F_") != -1
-
-
-def hasForwards(r):
-    return r['file_name'].find("_J_") != -1
+def hasProduct(r, p):
+    return r['file_name'].find('_{}_'.format(p)) != -1
 
 
 def isNewerThan(r, dt):
