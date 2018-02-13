@@ -26,8 +26,8 @@ def main():
         fname = 'lastrun'
         lastRun = readDate(fname)
 
-    list = getList(lastRun, 0, 500)
-    downloadLinks(list, args.prods, args.dest)
+    list = getList(lastRun, args.prods, 0, 500)[0]
+    downloadLinks(list, args.dest)
 
 
 def readDate(fname):
@@ -54,7 +54,11 @@ def writeDate(fname, date):
         sys.exit(1)
 
 
-def getList(lastRun, startRow, maxRows):
+def getList(lastRun, prods, startRow, maxRows):
+    if len(prods) <= 0:
+        print("No products requested. Try again with more products.")
+        sys.exit(1)
+
     endpoint = "https://registers.esma.europa.eu/solr/esma_registers_firds_files/"
     nowISO = datetime.utcnow().replace(microsecond=0)
     endDate = nowISO.strftime(ISOfmt)
@@ -72,45 +76,46 @@ def getList(lastRun, startRow, maxRows):
     leftRows = response['numFound'] - maxRows
 
     if leftRows <= 0:
-        return response['docs']
+        body = response['docs']
     else:
         print("Pagination needed.")
-        return response['docs'].update(getList(lastRun, maxRows + 1, leftRows))
+        body = response['docs'].update(getList(lastRun, maxRows + 1, leftRows))
+
+    if len(body) == 0:
+        print("No file available for required parameters.")
+        sys.exit(1)
+
+    FUL = [x for x in body if x['file_type'] == 'FULINS']
+
+
+    ls = []
+
+    try:
+        newestFUL = get_newest(FUL)
+    except(ValueError):
+        newestFUL = lastRun
+
+    if len(FUL) > 0:
+        for prod in prods:
+            ls.append(
+                [x for x in FUL if
+                 hasProduct(x, prod) and datetime.strptime(x['publication_date'], ISOfmt) == newestFUL])
+
+    DLT = [x for x in body if x['file_type'] == 'DLTINS' and isNewerThan(x, newestFUL)]
+    ls.append(DLT)
+    newestDLT = get_newest(DLT)
+    return ls, newestFUL, newestDLT
 
 
 def get_newest(list):
     return max([datetime.strptime(x['publication_date'], ISOfmt) for x in list])
 
 
-def downloadLinks(list, prods, destPath):
-    if len(prods) <= 0:
-        print("No products requested. Try again with more products.")
-        sys.exit(1)
-
-    FUL = [x for x in list if x['file_type'] == 'FULINS']
-
-    if len(FUL) <= 0:
-        print("None of the requested items is available.")
-        sys.exit(1)
-
-    newestFUL = get_newest(FUL)
-    ls = []
-
-    for prod in prods:
-        ls.append(
-            [x for x in FUL if hasProduct(x, prod) and datetime.strptime(x['publication_date'], ISOfmt) == newestFUL])
-
-    DLT = [x for x in list if x['file_type'] == 'DLTINS' and isNewerThan(x, newestFUL)]
-    ls.append(DLT)
-    newestDLT = get_newest(DLT)
-
-    for list in ls:
-        for file in list:
+def downloadLinks(list, destPath):
+    for sublist in list:
+        for file in sublist:
             link = file['download_link']
             downloadZip(link, destPath + getFilename(link))
-
-    return newestFUL, newestDLT
-
 
 def hasProduct(r, p):
     return r['file_name'].find('_{}_'.format(p)) != -1

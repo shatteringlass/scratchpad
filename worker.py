@@ -95,8 +95,9 @@ def download_files(cutoff, prods, dest_path):
         fname = 'lastrun'
         last_run = f.readDate(fname)  # Lancia errore se non esiste questo file
 
-    list = f.getList(last_run, 0, 500)
-    return f.downloadLinks(list, prods, dest_path)
+    result = f.getList(last_run, prods, 0, 500)
+    f.downloadLinks(result[0], dest_path)
+    return result[1], result[2]
 
 
 def merge_mult_csv(pth, out):
