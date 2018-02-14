@@ -56,28 +56,22 @@ def main():
     m_ful = wdir + r'/merge_FULINS_' + n[0] + '.csv'
     m_dlt = wdir + r'/merge_DLTINS_' + n[1] + '.csv'
 
-    print("Merging available FULINS files.")
-    merge_mult_csv(wdir + r'/FULINS*.csv', m_ful)
-    print(r"--> Merging FULINS files succeeded.")
+    dest = {'fulins': {'from': wdir + r'/FULINS*.csv', 'to': m_ful, 'hr': [0, 5]},
+            'dltins': {'from': wdir + r'/DLTINS*.csv', 'to': m_dlt, 'hr': [1, 6]}}
+    success = {}
 
-    print("Merging available DLTINS files.")
-    merge_mult_csv(wdir + r'/DLTINS*.csv', m_dlt)
-    print(r"--> Merging DLTINS files succeeded.")
-
-    print("Hashing table rows...")
-    # Faccio l'hash delle righe utilizzando la 2-upla <ID,Venue>
-    insert_hashes(m_ful, prd, sep, [0, 5])
-    insert_hashes(m_dlt, prd, sep, [1, 6])
-    print(r"--> Hashing completed.")
-
-    # Se la tabella esiste, tronco e inserisco dati, altrimenti la creo
-    print("Ingesting FULINS data into pgSQL table.")
-    ingest_db(hst, dbn, 'fulins', uid, pwd, m_ful, sep)
-    print(r"--> FULINS files ingestion successful.")
-
-    print("Ingesting DLTINS data into pgSQL table.")
-    ingest_db(hst, dbn, 'dltins', uid, pwd, m_dlt, sep)
-    print(r"--> DLTINS files ingestion successful.")
+    print("Merging available CSV files.")
+    for key, value in dest.items():
+        success[key] = merge_mult_csv(value['from'], value['to'])
+        if success[key]:
+            print(r"--> Merging {} files succeeded.".format(key))
+            print("Now proceeding to hash table rows...")
+            # Faccio l'hash delle righe utilizzando la 2-upla <ID,Venue>
+            insert_hashes(value['to'], prd, sep, value['hr'])
+            print(r"--> Hashing completed.")
+            # Se la tabella esiste, tronco e inserisco dati, altrimenti la creo
+            print("Ingesting {} data into pgSQL table.".format(key))
+            ingest_db(hst, dbn, key, uid, pwd, value['to'], sep)
 
     if len(args.cleanup) > 0:
         print("Now removing leftover files.")
@@ -104,13 +98,18 @@ def merge_mult_csv(pth, out):
     import shutil
     import glob
     allFiles = glob.glob(pth)
-    with open(out, 'wb') as outfile:
-        for i, fname in enumerate(allFiles):
-            with open(fname, 'rb') as infile:
-                if i != 0:
-                    infile.readline()  # Throw away header on all but first file
-                # Block copy rest of file from input to output without parsing
-                shutil.copyfileobj(infile, outfile)
+    if len(allFiles) > 0:
+        with open(out, 'wb') as outfile:
+            for i, fname in enumerate(allFiles):
+                with open(fname, 'rb') as infile:
+                    if i != 0:
+                        infile.readline()  # Throw away header on all but first file
+                    # Block copy rest of file from input to output without parsing
+                    shutil.copyfileobj(infile, outfile)
+                    return True
+    else:
+        print("No files to be merged.")
+        return False
 
 
 def unzip_files(zip_path, dest_path):
